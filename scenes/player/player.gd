@@ -7,6 +7,9 @@ extends CharacterBody2D
 ##
 ## Tem 7 corações (`Hearts`). Cada contato com uma criatura tira um e deixa o gato
 ## invencível por um instante; ao zerar, ele desmaia e emite `fainted`.
+## Recupera automaticamente 1 coração a cada 10 segundos por padrão.
+## Sofrer dano ou executar um arranhão, mesmo sem acertar uma criatura,
+## reinicia a contagem. Não recupera enquanto está desmaiado.
 
 ## Emitido a cada arranhão, com a direção do golpe.
 signal attacked(direction: Vector2)
@@ -30,6 +33,11 @@ const ATTACK_SIZE := Vector2(36, 36)
 @export var attack_cooldown := 0.4
 ## Quanto tempo o gato fica invencível depois de levar um golpe, em segundos.
 @export var invulnerability_time := 1.0
+## Intervalo sem dano ou arranhões para recuperar corações, em segundos.
+## Arranhões no vazio também reiniciam a contagem.
+@export var regeneration_interval := 10.0
+## Quantidade de corações recuperados por intervalo.
+@export var regeneration_amount := 1
 
 ## Para onde o gato olha: a última direção em que andou (uma das quatro).
 var facing := Vector2.DOWN
@@ -40,6 +48,7 @@ var hearts := Hearts.new()
 var _cooldown_left := 0.0
 var _invulnerable_left := 0.0
 var _fainted := false
+var _regeneration_elapsed := 0.0
 
 @onready var _camera: Camera2D = $Camera
 @onready var _scratch: ScratchEffect = $Scratch
@@ -52,6 +61,7 @@ func _physics_process(delta: float) -> void:
 	if _fainted:
 		velocity = Vector2.ZERO
 		return
+	_update_regeneration(delta)
 	var direction := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	facing = facing_for(direction, facing)
 	_sprite.flip_h = flip_for(facing)
@@ -93,6 +103,7 @@ func try_attack() -> bool:
 	if _cooldown_left > 0.0 or _fainted:
 		return false
 	_cooldown_left = attack_cooldown
+	_regeneration_elapsed = 0.0
 	for creature in creatures_in_reach():
 		creature.take_scratch(facing)
 	_scratch.play(facing)
@@ -124,6 +135,8 @@ func take_hit(amount: int = 1) -> bool:
 	if _fainted or is_invulnerable():
 		return false
 	hearts.hurt(amount)
+	if amount > 0:
+		_regeneration_elapsed = 0.0
 	if hearts.is_empty():
 		_fainted = true
 		_set_blink(false)
@@ -136,6 +149,23 @@ func take_hit(amount: int = 1) -> bool:
 ## Recupera corações (até 7). Devolve quantos recuperou.
 func heal(amount: int = 1) -> int:
 	return hearts.heal(amount)
+
+
+## Recupera corações após um intervalo sem dano ou arranhões.
+func _update_regeneration(delta: float) -> void:
+	if _fainted or hearts.is_full() or regeneration_interval <= 0.0 or regeneration_amount <= 0:
+		_regeneration_elapsed = 0.0
+		return
+
+	_regeneration_elapsed += delta
+
+	while _regeneration_elapsed >= regeneration_interval:
+		_regeneration_elapsed -= regeneration_interval
+		heal(regeneration_amount)
+
+		if hearts.is_full():
+			_regeneration_elapsed = 0.0
+			return
 
 
 func is_invulnerable() -> bool:
