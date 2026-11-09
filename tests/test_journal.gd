@@ -1,4 +1,3 @@
-
 extends GutTest
 ## Testa o carregamento, a construção e a navegação do diário.
 
@@ -20,6 +19,7 @@ func _create_journal() -> Node:
 # CARREGAMENTO
 # =====================================================
 
+
 func test_loads_journal_data_and_builds_pages() -> void:
 	var journal := _create_journal()
 
@@ -34,6 +34,7 @@ func test_loads_journal_data_and_builds_pages() -> void:
 # =====================================================
 # PÁGINAS DAS REGIÕES
 # =====================================================
+
 
 func test_region_pages_follow_json_order() -> void:
 	var journal := _create_journal()
@@ -64,6 +65,7 @@ func test_region_pages_follow_json_order() -> void:
 # PÁGINAS DAS CONDIÇÕES
 # =====================================================
 
+
 func test_condition_pages_follow_json_order() -> void:
 	var journal := _create_journal()
 
@@ -93,6 +95,7 @@ func test_condition_pages_follow_json_order() -> void:
 # PÁGINAS DOS INGREDIENTES
 # =====================================================
 
+
 func test_ingredient_pages_match_registered_ingredients() -> void:
 	var journal := _create_journal()
 
@@ -115,6 +118,7 @@ func test_ingredient_pages_match_registered_ingredients() -> void:
 # ESTRUTURA DAS PÁGINAS
 # =====================================================
 
+
 func test_all_pages_have_required_fields() -> void:
 	var journal := _create_journal()
 	var pages: Array = journal.get("_pages")
@@ -129,10 +133,7 @@ func test_all_pages_have_required_fields() -> void:
 
 	for page: Dictionary in pages:
 		for field: String in required_fields:
-			assert_true(
-				page.has(field),
-				"Página sem o campo obrigatório: " + field
-			)
+			assert_true(page.has(field), "Página sem o campo obrigatório: " + field)
 
 
 func test_static_page_preserves_source_data() -> void:
@@ -146,10 +147,7 @@ func test_static_page_preserves_source_data() -> void:
 		"category": "introduction",
 	}
 
-	var result: Dictionary = journal.call(
-		"_make_static_page",
-		source
-	)
+	var result: Dictionary = journal.call("_make_static_page", source)
 
 	assert_eq(result, source)
 
@@ -157,45 +155,41 @@ func test_static_page_preserves_source_data() -> void:
 func test_static_page_uses_empty_defaults() -> void:
 	var journal := _create_journal()
 
-	var result: Dictionary = journal.call(
-		"_make_static_page",
-		{}
-	)
+	var result: Dictionary = journal.call("_make_static_page", {})
 
-	assert_eq(result, {
-		"title": "",
-		"subtitle": "",
-		"content": "",
-		"image": "",
-		"category": "",
-	})
+	assert_eq(
+		result,
+		{
+			"title": "",
+			"subtitle": "",
+			"content": "",
+			"image": "",
+			"category": "",
+		}
+	)
 
 
 # =====================================================
 # NOMES DAS REGIÕES
 # =====================================================
 
+
 func test_get_region_name_returns_registered_name() -> void:
 	var journal := _create_journal()
 
-	assert_eq(
-		journal.call("_get_region_name", "cerrado"),
-		"Cerrado"
-	)
+	assert_eq(journal.call("_get_region_name", "cerrado"), "Cerrado")
 
 
 func test_unknown_region_name_returns_original_id() -> void:
 	var journal := _create_journal()
 
-	assert_eq(
-		journal.call("_get_region_name", "regiao_inexistente"),
-		"regiao_inexistente"
-	)
+	assert_eq(journal.call("_get_region_name", "regiao_inexistente"), "regiao_inexistente")
 
 
 # =====================================================
 # NAVEGAÇÃO
 # =====================================================
+
 
 func test_page_navigation_moves_forward_and_backward() -> void:
 	var journal := _create_journal()
@@ -234,6 +228,7 @@ func test_next_page_does_not_exceed_last_page() -> void:
 # =====================================================
 # ABRIR E FECHAR
 # =====================================================
+
 
 func test_journal_starts_closed() -> void:
 	var journal := _create_journal()

@@ -1,4 +1,3 @@
-
 extends CanvasLayer
 
 const JOURNAL_DATA_PATH := "res://data/diario.json"
@@ -30,16 +29,9 @@ const PARITY_NAMES := {
 
 @onready var _page_counter: Label = $Root/Center/Panel/Layout/Footer/PageCounter
 
-@onready var _previous_button: Button = (
-	$Root/Center/Panel/Layout/Footer/PreviousButton
-)
-@onready var _next_button: Button = (
-	$Root/Center/Panel/Layout/Footer/NextButton
-)
-@onready var _close_button: Button = (
-	$Root/Center/Panel/Layout/Footer/CloseButton
-)
-
+@onready var _previous_button: Button = $Root/Center/Panel/Layout/Footer/PreviousButton
+@onready var _next_button: Button = $Root/Center/Panel/Layout/Footer/NextButton
+@onready var _close_button: Button = $Root/Center/Panel/Layout/Footer/CloseButton
 
 # =====================================================
 # CONTROLE DO DIÁRIO
@@ -51,10 +43,10 @@ var _current_page: int = 0
 var _journal_data: Dictionary = {}
 var _pages: Array[Dictionary] = []
 
-
 # =====================================================
 # INICIALIZAÇÃO
 # =====================================================
+
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -79,6 +71,7 @@ func _ready() -> void:
 # =====================================================
 # CARREGAMENTO DO JSON
 # =====================================================
+
 
 func _load_journal_data() -> bool:
 	if not FileAccess.file_exists(JOURNAL_DATA_PATH):
@@ -106,6 +99,7 @@ func _load_journal_data() -> bool:
 # CONSTRUÇÃO DAS PÁGINAS
 # =====================================================
 
+
 func _build_pages() -> void:
 	_pages.clear()
 
@@ -123,10 +117,9 @@ func _build_pages() -> void:
 # INTRODUÇÃO
 # =====================================================
 
+
 func _build_introduction_pages() -> void:
-	var introduction_pages: Variant = _journal_data.get(
-		"introduction", []
-	)
+	var introduction_pages: Variant = _journal_data.get("introduction", [])
 
 	if typeof(introduction_pages) != TYPE_ARRAY:
 		return
@@ -141,6 +134,7 @@ func _build_introduction_pages() -> void:
 # =====================================================
 # REGIÕES
 # =====================================================
+
 
 func _build_region_pages() -> void:
 	var regions: Variant = _journal_data.get("regions", {})
@@ -164,38 +158,30 @@ func _build_region_pages() -> void:
 		_pages.append(_make_region_page(region_id, region_data))
 
 
-func _make_region_page(
-	region_id: String,
-	region_data: Dictionary
-) -> Dictionary:
+func _make_region_page(region_id: String, region_data: Dictionary) -> Dictionary:
 	var content_before := str(region_data.get("content_before", ""))
 	var content_after := str(region_data.get("content_after", ""))
-	var ingredient_notes: Dictionary = region_data.get(
-		"ingredient_notes", {}
-	)
+	var ingredient_notes: Dictionary = region_data.get("ingredient_notes", {})
 
 	var item_lines := PackedStringArray()
 	var item_number := 1
 
 	for parity: String in ["par", "impar"]:
-		var ingredients: Array[Ingredient] = (
-			IngredientData.get_ingredients_in(region_id, parity)
-		)
+		var ingredients: Array[Ingredient] = IngredientData.get_ingredients_in(region_id, parity)
 
 		for ingredient: Ingredient in ingredients:
-			var parity_name: String = PARITY_NAMES.get(
-				parity, parity
+			var parity_name: String = PARITY_NAMES.get(parity, parity)
+
+			var line := (
+				"%d. %s — andares %s."
+				% [
+					item_number,
+					_get_ingredient_title(ingredient.id, ingredient),
+					parity_name,
+				]
 			)
 
-			var line := "%d. %s — andares %s." % [
-				item_number,
-				_get_ingredient_title(ingredient.id, ingredient),
-				parity_name,
-			]
-
-			var note := str(
-				ingredient_notes.get(ingredient.id, "")
-			)
+			var note := str(ingredient_notes.get(ingredient.id, ""))
 
 			if not note.is_empty():
 				line += " " + note
@@ -229,11 +215,10 @@ func _make_region_page(
 # CONDIÇÕES
 # =====================================================
 
+
 func _build_condition_pages() -> void:
 	var conditions: Variant = _journal_data.get("conditions", {})
-	var condition_order: Variant = _journal_data.get(
-		"condition_order", []
-	)
+	var condition_order: Variant = _journal_data.get("condition_order", [])
 
 	if typeof(conditions) != TYPE_DICTIONARY:
 		return
@@ -245,36 +230,21 @@ func _build_condition_pages() -> void:
 		var condition_id := str(condition_id_value)
 
 		if not conditions.has(condition_id):
-			push_warning(
-				"Diário: condição sem descrição: " + condition_id
-			)
+			push_warning("Diário: condição sem descrição: " + condition_id)
 			continue
 
 		var condition_data: Dictionary = conditions[condition_id]
 
-		_pages.append(
-			_make_condition_page(condition_id, condition_data)
-		)
+		_pages.append(_make_condition_page(condition_id, condition_data))
 
 
-func _make_condition_page(
-	condition_id: String,
-	condition_data: Dictionary
-) -> Dictionary:
-	var content_before := str(
-		condition_data.get("content_before", "")
-	)
-	var content_after := str(
-		condition_data.get("content_after", "")
-	)
+func _make_condition_page(condition_id: String, condition_data: Dictionary) -> Dictionary:
+	var content_before := str(condition_data.get("content_before", ""))
+	var content_after := str(condition_data.get("content_after", ""))
 
-	var ingredient_notes: Dictionary = condition_data.get(
-		"ingredient_notes", {}
-	)
+	var ingredient_notes: Dictionary = condition_data.get("ingredient_notes", {})
 
-	var requirements: Array[PackedStringArray] = (
-		IngredientData.get_requirements(condition_id)
-	)
+	var requirements: Array[PackedStringArray] = IngredientData.get_requirements(condition_id)
 
 	var ingredient_lines := PackedStringArray()
 	var requirement_number := 1
@@ -284,40 +254,32 @@ func _make_condition_page(
 		var note := ""
 
 		for ingredient_id: String in group:
-			var ingredient: Ingredient = (
-				IngredientData.get_ingredient(ingredient_id)
-			)
+			var ingredient: Ingredient = IngredientData.get_ingredient(ingredient_id)
 
 			if ingredient == null:
 				continue
 
-			var ingredient_title := _get_ingredient_title(
-				ingredient_id,
-				ingredient
-			)
+			var ingredient_title := _get_ingredient_title(ingredient_id, ingredient)
 
-			var region_name := _get_region_name(
-				ingredient.region
-			)
+			var region_name := _get_region_name(ingredient.region)
 
-			choices.append(
-				"%s — %s" % [ingredient_title, region_name]
-			)
+			choices.append("%s — %s" % [ingredient_title, region_name])
 
 			if note.is_empty():
-				note = str(
-					ingredient_notes.get(ingredient_id, "")
-				)
+				note = str(ingredient_notes.get(ingredient_id, ""))
 
 		if choices.is_empty():
 			continue
 
 		var choice_text := " ou ".join(choices)
 
-		var line := "%d. %s" % [
-			requirement_number,
-			choice_text,
-		]
+		var line := (
+			"%d. %s"
+			% [
+				requirement_number,
+				choice_text,
+			]
+		)
 
 		if not note.is_empty():
 			line += ". " + note
@@ -352,57 +314,37 @@ func _make_condition_page(
 # INGREDIENTES
 # =====================================================
 
+
 func _build_ingredient_pages() -> void:
-	var ingredient_pages: Variant = _journal_data.get(
-		"ingredients", {}
-	)
+	var ingredient_pages: Variant = _journal_data.get("ingredients", {})
 
 	if typeof(ingredient_pages) != TYPE_DICTIONARY:
 		push_error("Diário: seção de ingredientes inválida.")
 		return
 
-	var all_ingredients: Array[Ingredient] = (
-		IngredientData.get_all_ingredients()
-	)
+	var all_ingredients: Array[Ingredient] = IngredientData.get_all_ingredients()
 
 	for ingredient: Ingredient in all_ingredients:
 		var ingredient_id := ingredient.id
 
-		var raw_page: Variant = ingredient_pages.get(
-			ingredient_id,
-			{}
-		)
+		var raw_page: Variant = ingredient_pages.get(ingredient_id, {})
 
 		var ingredient_data: Dictionary = {}
 
 		if typeof(raw_page) == TYPE_DICTIONARY:
 			ingredient_data = raw_page
 		else:
-			push_warning(
-				"Diário: descrição não cadastrada: " + ingredient_id
-			)
+			push_warning("Diário: descrição não cadastrada: " + ingredient_id)
 
-		_pages.append(
-			_make_ingredient_page(
-				ingredient_id,
-				ingredient,
-				ingredient_data
-			)
-		)
+		_pages.append(_make_ingredient_page(ingredient_id, ingredient, ingredient_data))
 
 
 func _make_ingredient_page(
-	ingredient_id: String,
-	ingredient: Ingredient,
-	ingredient_data: Dictionary
+	ingredient_id: String, ingredient: Ingredient, ingredient_data: Dictionary
 ) -> Dictionary:
-	var content_before := str(
-		ingredient_data.get("content_before", "")
-	)
+	var content_before := str(ingredient_data.get("content_before", ""))
 
-	var content_after := str(
-		ingredient_data.get("content_after", "")
-	)
+	var content_after := str(ingredient_data.get("content_after", ""))
 
 	if content_before.is_empty():
 		content_before = "Descrição ainda não cadastrada."
@@ -415,18 +357,12 @@ func _make_ingredient_page(
 	if not content_after.is_empty():
 		content += "\n\n" + content_after
 
-	var image_path := str(
-		ingredient_data.get("image", "")
-	)
+	var image_path := str(ingredient_data.get("image", ""))
 
 	return {
 		"id": ingredient_id,
-		"title": str(
-			ingredient_data.get("title", ingredient.display_name)
-		),
-		"subtitle": str(
-			ingredient_data.get("subtitle", "Item")
-		),
+		"title": str(ingredient_data.get("title", ingredient.display_name)),
+		"subtitle": str(ingredient_data.get("subtitle", "Item")),
 		"content": content.strip_edges(),
 		"image": image_path,
 		"category": "item",
@@ -436,6 +372,7 @@ func _make_ingredient_page(
 # =====================================================
 # PÁGINAS ESTÁTICAS
 # =====================================================
+
 
 func _make_static_page(source: Dictionary) -> Dictionary:
 	return {
@@ -451,18 +388,11 @@ func _make_static_page(source: Dictionary) -> Dictionary:
 # NOMES DOS INGREDIENTES E REGIÕES
 # =====================================================
 
-func _get_ingredient_title(
-	ingredient_id: String,
-	ingredient: Ingredient
-) -> String:
-	var ingredients_data: Dictionary = _journal_data.get(
-		"ingredients", {}
-	)
 
-	var ingredient_data: Variant = ingredients_data.get(
-		ingredient_id,
-		{}
-	)
+func _get_ingredient_title(ingredient_id: String, ingredient: Ingredient) -> String:
+	var ingredients_data: Dictionary = _journal_data.get("ingredients", {})
+
+	var ingredient_data: Variant = ingredients_data.get(ingredient_id, {})
 
 	if typeof(ingredient_data) == TYPE_DICTIONARY:
 		var title := str(ingredient_data.get("title", ""))
@@ -474,14 +404,13 @@ func _get_ingredient_title(
 
 
 func _get_region_name(region_id: String) -> String:
-	return str(
-		REGION_NAMES.get(region_id, region_id)
-	)
+	return str(REGION_NAMES.get(region_id, region_id))
 
 
 # =====================================================
 # ENTRADAS DO JOGADOR
 # =====================================================
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("journal"):
@@ -500,6 +429,7 @@ func _unhandled_input(event: InputEvent) -> void:
 # =====================================================
 # VERIFICAÇÃO DE OUTROS MENUS
 # =====================================================
+
 
 func _has_other_menu_open() -> bool:
 	var scene_parent := get_parent()
@@ -523,6 +453,7 @@ func _has_other_menu_open() -> bool:
 # =====================================================
 # ABRIR E FECHAR O DIÁRIO
 # =====================================================
+
 
 func open() -> void:
 	if _root.visible:
@@ -553,6 +484,7 @@ func is_open() -> bool:
 # NAVEGAÇÃO ENTRE PÁGINAS
 # =====================================================
 
+
 func _go_to_next_page() -> void:
 	if _current_page < _pages.size() - 1:
 		_current_page += 1
@@ -569,6 +501,7 @@ func _go_to_previous_page() -> void:
 # CARREGAMENTO DA IMAGEM
 # =====================================================
 
+
 func _update_page_image(image_path: String) -> void:
 	_page_image.texture = null
 	_page_image.hide()
@@ -583,9 +516,7 @@ func _update_page_image(image_path: String) -> void:
 	var loaded_texture := load(image_path) as Texture2D
 
 	if loaded_texture == null:
-		push_warning(
-			"Não foi possível carregar a imagem: " + image_path
-		)
+		push_warning("Não foi possível carregar a imagem: " + image_path)
 		return
 
 	_page_image.texture = loaded_texture
@@ -595,6 +526,7 @@ func _update_page_image(image_path: String) -> void:
 # =====================================================
 # ATUALIZAÇÃO DA PÁGINA
 # =====================================================
+
 
 func _update_page() -> void:
 	if _pages.is_empty():
@@ -610,11 +542,7 @@ func _update_page() -> void:
 		_next_button.disabled = true
 		return
 
-	_current_page = clampi(
-		_current_page,
-		0,
-		_pages.size() - 1
-	)
+	_current_page = clampi(_current_page, 0, _pages.size() - 1)
 
 	var page: Dictionary = _pages[_current_page]
 
@@ -625,10 +553,13 @@ func _update_page() -> void:
 	var image_path := str(page.get("image", ""))
 	_update_page_image(image_path)
 
-	_page_counter.text = "Página %d / %d" % [
-		_current_page + 1,
-		_pages.size(),
-	]
+	_page_counter.text = (
+		"Página %d / %d"
+		% [
+			_current_page + 1,
+			_pages.size(),
+		]
+	)
 
 	_previous_button.disabled = _current_page == 0
 	_next_button.disabled = _current_page >= _pages.size() - 1
