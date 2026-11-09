@@ -17,6 +17,16 @@ const PARITY_NAMES := {
 }
 
 # =====================================================
+# CONTROLE DO DIÁRIO
+# =====================================================
+
+var _paused_before_open: bool = false
+var _current_page: int = 0
+
+var _journal_data: Dictionary = {}
+var _pages: Array[Dictionary] = []
+
+# =====================================================
 # REFERÊNCIAS AOS ELEMENTOS DA INTERFACE
 # =====================================================
 
@@ -32,16 +42,6 @@ const PARITY_NAMES := {
 @onready var _previous_button: Button = $Root/Center/Panel/Layout/Footer/PreviousButton
 @onready var _next_button: Button = $Root/Center/Panel/Layout/Footer/NextButton
 @onready var _close_button: Button = $Root/Center/Panel/Layout/Footer/CloseButton
-
-# =====================================================
-# CONTROLE DO DIÁRIO
-# =====================================================
-
-var _paused_before_open: bool = false
-var _current_page: int = 0
-
-var _journal_data: Dictionary = {}
-var _pages: Array[Dictionary] = []
 
 # =====================================================
 # INICIALIZAÇÃO
