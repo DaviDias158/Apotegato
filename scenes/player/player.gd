@@ -5,11 +5,11 @@ extends CharacterBody2D
 ## com a ação `attack`: golpe de curto alcance na direção em que ele olha, com um
 ## pequeno intervalo entre os golpes. Sem armas e sem sangue.
 ##
-## Tem 7 corações (`Hearts`). Cada contato com uma criatura tira um e deixa o gato
-## invencível por um instante; ao zerar, ele desmaia e emite `fainted`.
-## Recupera automaticamente 1 coração a cada 10 segundos por padrão.
-## Sofrer dano ou executar um arranhão, mesmo sem acertar uma criatura,
-## reinicia a contagem. Não recupera enquanto está desmaiado.
+## Tem 7 corações, contados em meios (`Hearts`). Cada golpe de criatura tira o
+## dano dela, deixa o gato invencível por um instante e o empurra para longe dela;
+## ao zerar, ele desmaia e emite `fainted`. Recupera automaticamente meio coração
+## a cada 5 segundos por padrão. Sofrer dano ou executar um arranhão, mesmo sem
+## acertar uma criatura, reinicia a contagem. Não recupera enquanto está desmaiado.
 
 ## Emitido a cada arranhão, com a direção do golpe.
 signal attacked(direction: Vector2)
@@ -19,27 +19,38 @@ signal fainted
 
 ## Quanto o sprite pisca durante a invencibilidade, em segundos por piscada.
 const BLINK_SECONDS := 0.08
+## Opacidade do sprite na parte "apagada" da piscada e na versão sem piscar.
+const DIM_ALPHA := 0.35
+const REDUCED_DIM_ALPHA := 0.6
 
 ## Camada de colisão das criaturas (a 2ª).
 const CREATURE_MASK := 2
-## Distância do centro do gato até o centro do golpe, em pixels.
-const ATTACK_REACH := 26.0
-## Tamanho da área do golpe, em pixels.
-const ATTACK_SIZE := Vector2(36, 36)
+## Camada de colisão do cenário: paredes e arbustos (a 1ª).
+const WORLD_MASK := 1
+## Deslocamento do centro do corpo da criatura em relação à origem dela.
+const CREATURE_CENTER_OFFSET := Vector2(0, 4)
 
 ## Velocidade de caminhada, em pixels por segundo.
 @export var speed := 160.0
+## Distância do centro do gato até o centro do arranhão, em pixels.
+@export var attack_reach := 26.0
+## Tamanho da área do arranhão, em pixels.
+@export var attack_size := Vector2(36, 36)
 ## Intervalo mínimo entre dois arranhões, em segundos.
 @export var attack_cooldown := 0.4
 ## Quanto tempo o gato fica invencível depois de levar um golpe, em segundos.
 @export var invulnerability_time := 1.0
-## Intervalo sem dano ou arranhões para recuperar corações, em segundos.
+## Velocidade do empurrão ao levar um golpe, em pixels por segundo.
+@export var knockback_speed := 220.0
+## Duração do empurrão, em segundos. Durante ele o gato não anda nem arranha.
+@export var knockback_seconds := 0.12
+## Intervalo sem dano ou arranhões para recuperar vida, em segundos.
 ## Arranhões no vazio também reiniciam a contagem.
-@export var regeneration_interval := 10.0
-## Quantidade de corações recuperados por intervalo.
+@export var regeneration_interval := 5.0
+## Quantidade de meios corações recuperados por intervalo.
 @export var regeneration_amount := 1
 
-## Para onde o gato olha: a última direção em que andou (uma das quatro).
+## Para onde o gato olha: a última direção em que andou (uma das oito, unitária).
 var facing := Vector2.DOWN
 
 ## Os corações do gato.
@@ -49,10 +60,20 @@ var _cooldown_left := 0.0
 var _invulnerable_left := 0.0
 var _fainted := false
 var _regeneration_elapsed := 0.0
+var _knockback_left := 0.0
+var _knockback := Vector2.ZERO
+var _walk_time := 0.0
+## Segundos desde o início do arranhão; negativo quando não está arranhando.
+var _scratch_time := -1.0
+var _has_art := false
 
 @onready var _camera: Camera2D = $Camera
 @onready var _scratch: ScratchEffect = $Scratch
 @onready var _sprite: Sprite2D = $Sprite
+
+
+func _ready() -> void:
+	_install_art()
 
 
 func _physics_process(delta: float) -> void:
@@ -60,13 +81,20 @@ func _physics_process(delta: float) -> void:
 	_update_invulnerability(delta)
 	if _fainted:
 		velocity = Vector2.ZERO
+		_animate(delta)
 		return
 	_update_regeneration(delta)
+	if _knockback_left > 0.0:
+		_knockback_left -= delta
+		velocity = _knockback
+		move_and_slide()
+		_animate(delta)
+		return
 	var direction := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	facing = facing_for(direction, facing)
-	_sprite.flip_h = flip_for(facing)
 	velocity = velocity_for(direction)
 	move_and_slide()
+	_animate(delta)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -80,78 +108,91 @@ func velocity_for(direction: Vector2) -> Vector2:
 	return direction.limit_length(1.0) * speed
 
 
-## Direção para onde o gato passa a olhar: a das quatro direções mais próxima da
-## entrada (na diagonal, vale a horizontal). Sem entrada, continua olhando para
-## `current`.
+## Direção para onde o gato passa a olhar: a das oito direções (as quatro retas e
+## as quatro diagonais) mais próxima da entrada. Sem entrada, continua olhando
+## para `current`.
 static func facing_for(direction: Vector2, current: Vector2) -> Vector2:
-	if direction.is_zero_approx():
-		return current
-	if absf(direction.x) >= absf(direction.y):
-		return Vector2(signf(direction.x), 0.0)
-	return Vector2(0.0, signf(direction.y))
+	return MingauSprites.snap(direction, current)
 
 
-## Se o sprite deve ser espelhado. A arte do gato olha para a esquerda, então
-## espelha quando ele olha para a direita; para cima e para baixo não espelha.
+## Se o sprite deve ser espelhado. Só vale para o sprite provisório, que olha para
+## a esquerda; a folha de arte já traz as oito direções.
 static func flip_for(direction: Vector2) -> bool:
 	return direction.x > 0.0
 
 
 ## Arranha na direção em que o gato olha. Devolve false se ainda estiver no
-## intervalo entre golpes. Cada criatura na área do golpe leva um arranhão.
+## intervalo entre golpes, desmaiado, empurrado ou se o jogo não está na
+## exploração (diálogo, entrega ou menu). Cada criatura na área do golpe leva um
+## arranhão.
 func try_attack() -> bool:
-	if _cooldown_left > 0.0 or _fainted:
+	if _cooldown_left > 0.0 or _fainted or is_knocked_back():
+		return false
+	if not GameState.flow.can_player_act():
 		return false
 	_cooldown_left = attack_cooldown
 	_regeneration_elapsed = 0.0
 	for creature in creatures_in_reach():
 		creature.take_scratch(facing)
 	_scratch.play(facing)
+	_scratch_time = 0.0
 	attacked.emit(facing)
 	return true
 
 
 ## Criaturas dentro da área do golpe agora (a área fica na frente do gato).
+## Criatura do outro lado de uma parede ou arbusto não é atingida.
 func creatures_in_reach() -> Array[Creature]:
 	var hitbox := RectangleShape2D.new()
-	hitbox.size = ATTACK_SIZE
+	hitbox.size = attack_size
 	var query := PhysicsShapeQueryParameters2D.new()
 	query.shape = hitbox
-	query.transform = Transform2D(0.0, global_position + facing * ATTACK_REACH)
+	query.transform = Transform2D(0.0, global_position + facing * attack_reach)
 	query.collision_mask = CREATURE_MASK
 	query.collide_with_bodies = true
 	var found: Array[Creature] = []
 	for hit in get_world_2d().direct_space_state.intersect_shape(query):
 		var creature := hit["collider"] as Creature
-		if creature != null and not creature.is_defeated():
+		if creature != null and not creature.is_defeated() and _has_clear_path_to(creature):
 			found.append(creature)
 	return found
 
 
-## Leva um golpe de criatura: tira `amount` corações e deixa o gato invencível
-## por `invulnerability_time`. Devolve false se o golpe foi ignorado (gato
-## invencível ou desmaiado). Ao zerar os corações o gato desmaia.
-func take_hit(amount: int = 1) -> bool:
+## Se não há parede nem arbusto entre o centro do gato e o centro da criatura.
+func _has_clear_path_to(creature: Creature) -> bool:
+	var target := creature.global_position + CREATURE_CENTER_OFFSET
+	var ray := PhysicsRayQueryParameters2D.create(global_position, target, WORLD_MASK, [get_rid()])
+	return get_world_2d().direct_space_state.intersect_ray(ray).is_empty()
+
+
+## Leva um golpe de criatura: tira `halves` meios corações, deixa o gato invencível
+## por `invulnerability_time` e o empurra para longe de `from` (posição de quem
+## bateu; sem ela, não há empurrão). Devolve false se o golpe foi ignorado (gato
+## invencível ou desmaiado). Ao zerar a vida o gato desmaia.
+func take_hit(halves: int = 1, from: Vector2 = Vector2.INF) -> bool:
 	if _fainted or is_invulnerable():
 		return false
-	hearts.hurt(amount)
-	if amount > 0:
+	hearts.hurt(halves)
+	if halves > 0:
 		_regeneration_elapsed = 0.0
 	if hearts.is_empty():
 		_fainted = true
+		_knockback_left = 0.0
 		_set_blink(false)
 		fainted.emit()
 	else:
 		_invulnerable_left = invulnerability_time
+		if halves > 0 and from.is_finite():
+			_start_knockback(from)
 	return true
 
 
-## Recupera corações (até 7). Devolve quantos recuperou.
+## Recupera meios corações (até o máximo). Devolve quantos recuperou.
 func heal(amount: int = 1) -> int:
 	return hearts.heal(amount)
 
 
-## Recupera corações após um intervalo sem dano ou arranhões.
+## Recupera vida após um intervalo sem dano ou arranhões.
 func _update_regeneration(delta: float) -> void:
 	if _fainted or hearts.is_full() or regeneration_interval <= 0.0 or regeneration_amount <= 0:
 		_regeneration_elapsed = 0.0
@@ -168,6 +209,21 @@ func _update_regeneration(delta: float) -> void:
 			return
 
 
+## Se o gato está sendo empurrado e, por isso, sem controle.
+func is_knocked_back() -> bool:
+	return _knockback_left > 0.0
+
+
+## Empurra o gato para longe de `from`. Se estiver exatamente em cima, empurra para
+## trás de onde olha.
+func _start_knockback(from: Vector2) -> void:
+	var away := (global_position - from).normalized()
+	if away.is_zero_approx():
+		away = -facing
+	_knockback = away * knockback_speed
+	_knockback_left = knockback_seconds
+
+
 func is_invulnerable() -> bool:
 	return _invulnerable_left > 0.0
 
@@ -180,12 +236,62 @@ func _update_invulnerability(delta: float) -> void:
 	if _invulnerable_left <= 0.0:
 		return
 	_invulnerable_left = maxf(_invulnerable_left - delta, 0.0)
-	_set_blink(_invulnerable_left > 0.0 and int(_invulnerable_left / BLINK_SECONDS) % 2 == 0)
+	# Com "reduzir efeitos visuais" não pisca: fica um pouco transparente
+	# durante toda a invulnerabilidade.
+	var steady := AudioSettings.reduce_effects
+	_set_blink(
+		_invulnerable_left > 0.0 and (steady or int(_invulnerable_left / BLINK_SECONDS) % 2 == 0)
+	)
 
 
 ## Liga ou desliga a piscada do sprite (mais transparente enquanto "piscando").
+## Com os efeitos reduzidos, a transparência é fixa e mais suave.
 func _set_blink(dimmed: bool) -> void:
-	_sprite.modulate.a = 0.35 if dimmed else 1.0
+	var dim_alpha := REDUCED_DIM_ALPHA if AudioSettings.reduce_effects else DIM_ALPHA
+	_sprite.modulate.a = dim_alpha if dimmed else 1.0
+
+
+## Troca a textura pela folha de arte, se estiver instalada.
+func _install_art() -> void:
+	var sheet := MingauSprites.load_sheet()
+	if sheet == null:
+		return
+	_has_art = true
+	_sprite.texture = sheet
+	_sprite.hframes = MingauSprites.COLUMNS
+	_sprite.vframes = MingauSprites.ROWS
+	_sprite.flip_h = false
+
+
+## Se o gato está usando a folha de arte (e não o sprite provisório).
+func has_art() -> bool:
+	return _has_art
+
+
+## Quadro atual da folha (coluna e linha), para os testes.
+func current_frame() -> int:
+	return _sprite.frame
+
+
+## Escolhe o quadro: arranhão, andar ou parado, na direção em que o gato olha.
+func _animate(delta: float) -> void:
+	if not _has_art:
+		_sprite.flip_h = flip_for(facing)
+		return
+	var column := MingauSprites.IDLE_FRAME
+	if _scratch_time >= 0.0:
+		_scratch_time += delta
+		column = MingauSprites.scratch_frame(_scratch_time)
+		if column < 0:
+			_scratch_time = -1.0
+			column = MingauSprites.IDLE_FRAME
+	if _scratch_time < 0.0:
+		if velocity.length() > 1.0 and not is_knocked_back() and not _fainted:
+			_walk_time += delta
+			column = MingauSprites.walk_frame(_walk_time)
+		else:
+			_walk_time = 0.0
+	_sprite.frame = (MingauSprites.direction_index(facing) * MingauSprites.COLUMNS + column)
 
 
 ## Impede a câmera de mostrar o que está fora da sala (em pixels do mundo).

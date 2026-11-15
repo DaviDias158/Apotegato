@@ -2,16 +2,22 @@
 
 [ext_resource type="Script" uid="uid://2c3tx15s5njq" path="res://scenes/cabin/cabin.gd" id="1_2b8xw"]
 [ext_resource type="TileSet" uid="uid://bh4gxas1ta2ly" path="res://scenes/cabin/cabin_tileset.tres" id="2_vecdk"]
-[ext_resource type="Texture2D" uid="uid://b7umn18vhx7q2" path="res://assets/art/cabin/rug.png" id="3_tybgj"]
-[ext_resource type="Texture2D" uid="uid://c5csmct4d0htd" path="res://assets/art/cabin/door.png" id="4_2m0yr"]
-[ext_resource type="Texture2D" uid="uid://hci0wf1qngpm" path="res://assets/art/cabin/shelf.png" id="5_umu4b"]
-[ext_resource type="Texture2D" uid="uid://c2g686fy1mnol" path="res://assets/art/cabin/table.png" id="6_hm3kb"]
-[ext_resource type="Texture2D" uid="uid://cpglastfn8m6m" path="res://assets/art/cabin/bed.png" id="7_bjiai"]
-[ext_resource type="Texture2D" uid="uid://brgq0fnirabsj" path="res://assets/art/cabin/plant.png" id="8_4exgh"]
+[ext_resource type="Texture2D" path="res://assets/art/cabin/rug.png" id="3_tybgj"]
+[ext_resource type="Texture2D" path="res://assets/art/cabin/door.png" id="4_2m0yr"]
+[ext_resource type="Texture2D" path="res://assets/art/cabin/shelf.png" id="5_umu4b"]
+[ext_resource type="Texture2D" path="res://assets/art/cabin/table.png" id="6_hm3kb"]
+[ext_resource type="Texture2D" path="res://assets/art/cabin/bed.png" id="7_bjiai"]
+[ext_resource type="Texture2D" path="res://assets/art/cabin/plant.png" id="8_4exgh"]
 [ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="9_pqqmu"]
 [ext_resource type="PackedScene" path="res://scenes/cabin/interaction_area.tscn" id="11_uo51r"]
 [ext_resource type="PackedScene" uid="uid://ctt1dhfms7gc" path="res://scenes/ui/journal.tscn" id="12_2b8xw"]
 [ext_resource type="PackedScene" path="res://scenes/ui/region_menu.tscn" id="13_region_menu"]
+[ext_resource type="PackedScene" path="res://scenes/ui/stock_menu.tscn" id="14_stock_menu"]
+[ext_resource type="PackedScene" path="res://scenes/ui/backpack_menu.tscn" id="15_backpack_menu"]
+[ext_resource type="PackedScene" path="res://scenes/ui/dialogue_box.tscn" id="16_dialogue_box"]
+[ext_resource type="Texture2D" path="res://assets/art/characters/apothecary_placeholder.png" id="17_apothecary"]
+[ext_resource type="Texture2D" path="res://assets/art/characters/patient_placeholder.png" id="18_patient"]
+[ext_resource type="PackedScene" path="res://scenes/ui/pause_menu.tscn" id="99_pause_menu"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_e5wdj"]
 size = Vector2(96, 32)
@@ -129,6 +135,25 @@ offset = Vector2(-16, -32)
 position = Vector2(0, 8)
 shape = SubResource("RectangleShape2D_u2uok")
 
+[node name="Apothecary" type="Node2D" parent="World"]
+position = Vector2(624, 236)
+
+[node name="Sprite" type="Sprite2D" parent="World/Apothecary"]
+texture_filter = 1
+texture = ExtResource("17_apothecary")
+centered = false
+offset = Vector2(-16, -46)
+
+[node name="Patient" type="Node2D" parent="World"]
+visible = false
+position = Vector2(192, 336)
+
+[node name="Sprite" type="Sprite2D" parent="World/Patient"]
+texture_filter = 1
+texture = ExtResource("18_patient")
+centered = false
+offset = Vector2(-16, -46)
+
 [node name="Player" parent="World" unique_id=73071853 instance=ExtResource("9_pqqmu")]
 position = Vector2(480, 320)
 
@@ -139,9 +164,9 @@ position = Vector2(464, 92)
 id = &"door"
 size = Vector2(64, 48)
 
-[node name="Journal" parent="Interactions" unique_id=1784736639 instance=ExtResource("11_uo51r")]
+[node name="Apothecary" parent="Interactions" unique_id=1784736639 instance=ExtResource("11_uo51r")]
 position = Vector2(624, 296)
-id = &"journal"
+id = &"apothecary"
 size = Vector2(128, 96)
 
 [node name="Patient" parent="Interactions" unique_id=2013525956 instance=ExtResource("11_uo51r")]
@@ -149,6 +174,19 @@ position = Vector2(176, 336)
 id = &"patient"
 size = Vector2(96, 96)
 
+[node name="Stock" parent="Interactions" instance=ExtResource("11_uo51r")]
+position = Vector2(272, 136)
+id = &"stock"
+size = Vector2(112, 64)
+
 [node name="RegionMenu" parent="." unique_id=2140659373 instance=ExtResource("13_region_menu")]
 
 [node name="JournalUI" parent="." unique_id=1694554464 instance=ExtResource("12_2b8xw")]
+
+[node name="StockMenu" parent="." instance=ExtResource("14_stock_menu")]
+
+[node name="BackpackMenu" parent="." instance=ExtResource("15_backpack_menu")]
+
+[node name="DialogueBox" parent="." instance=ExtResource("16_dialogue_box")]
+
+[node name="PauseMenu" parent="." instance=ExtResource("99_pause_menu")]

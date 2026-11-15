@@ -13,9 +13,13 @@ const ACTIONS := {
 	"backpack": [KEY_I],
 	"journal": [KEY_J],
 	"pause": [KEY_ESCAPE],
+	"toggle_fullscreen": [KEY_F11],
+	"toggle_scale_mode": [KEY_F10],
 }
 ## Pastas com código do jogo. addons/ e tests/ ficam de fora.
 const CODE_DIRS := ["res://autoload", "res://scenes", "res://scripts"]
+## Único script que pode ler teclas, porque é ele que remapeia as ações.
+const ALLOWED := ["res://autoload/input_settings.gd"]
 ## Trechos que indicam leitura direta de tecla em vez de ação.
 const FORBIDDEN := ["is_key_pressed", "is_physical_key_pressed", "InputEventKey", "KEY_"]
 
@@ -40,6 +44,8 @@ func test_no_script_reads_keys_directly() -> void:
 	if scripts.is_empty():
 		pass_test("Ainda não há scripts de jogo para conferir")
 	for path in scripts:
+		if path in ALLOWED:
+			continue
 		var source := FileAccess.get_file_as_string(path)
 		for token in FORBIDDEN:
 			assert_false(token in source, "%s usa %s; use uma ação do Input Map" % [path, token])

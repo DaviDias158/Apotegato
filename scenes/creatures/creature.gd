@@ -6,21 +6,40 @@ extends CharacterBody2D
 ## distância de detecção também é medida andando: uma criatura do outro lado de
 ## uma parede não percebe o gato.
 ##
-## Encostar nela tira um coração do gato (`Player.take_hit`), mesmo parada.
+## Encostar nela não machuca. Com o gato ao alcance, ela para e avisa (pisca em
+## vermelho e dá um pulinho), trava a direção, dá o bote e descansa. Só o bote
+## tira vida do gato (`Player.take_hit`), e só se ele estiver na área do golpe.
+## Um arranhão durante o aviso cancela o bote. Gato desmaiado não é atacado.
 ##
-## Três arranhões a derrotam, sem sangue: ela pisca, é empurrada para trás e, no
-## último, some encolhendo.
+## Todo tempo daqui (aviso, bote, descanso, empurrão) conta no `_physics_process`
+## com o `delta`, sem Timer, então congela junto com o jogo. O combate nunca
+## pausa a árvore de cenas.
+##
+## Três arranhões a derrotam (a quantidade vem do catálogo), sem sangue: ela
+## pisca, é empurrada para trás e, no último, some encolhendo.
 
 ## Emitido uma vez, quando a criatura é derrotada.
 signal defeated(creature: Creature)
 
 ## Segundos entre uma busca de caminho e outra.
 const REPATH_INTERVAL := 0.25
-const KNOCKBACK_SPEED := 160.0
-const KNOCKBACK_SECONDS := 0.12
 ## Distância (em pixels) a que a criatura considera que chegou à célula-alvo.
 const ARRIVAL_DISTANCE := 4.0
 const FADE_SECONDS := 0.25
+## Deslocamento do centro do corpo e da área do golpe em relação à origem.
+const BODY_OFFSET := Vector2(0, 4)
+## Quantas piscadas vermelhas o aviso tem.
+const WARNING_BLINKS := 3
+## Altura do pulinho do aviso, em pixels.
+const WARNING_HOP_HEIGHT := 4.0
+## Cor do sprite no pico da piscada do aviso.
+const WARNING_COLOR := Color(1.8, 0.35, 0.35)
+## Com os efeitos reduzidos: mistura fixa com a cor de aviso e brilho suave no golpe.
+const REDUCED_WARNING_MIX := 0.6
+const REDUCED_FLASH := 1.4
+## Provisório da criatura forte, só quando falta a arte do bicho: maior e mais escura.
+const STRONG_SCALE := 1.25
+const STRONG_TINT := Color(0.55, 0.45, 0.55)
 
 ## Velocidade de perseguição, em pixels por segundo.
 @export var speed := 70.0
@@ -30,10 +49,28 @@ const FADE_SECONDS := 0.25
 @export var give_up_distance := 288.0
 ## Quantos arranhões a derrotam.
 @export var hits_to_defeat := 3
-## Quantos corações tira do gato a cada contato.
-@export var contact_damage := 1
+## Quantos meios corações o bote tira do gato.
+@export var damage := 1
+## Distância em linha reta, em pixels, a que ela para e avisa.
+@export var attack_range := 24.0
+## Duração do aviso antes do bote, em segundos.
+@export var warning_seconds := 0.4
+## Duração do bote, em segundos.
+@export var lunge_seconds := 0.12
+## Velocidade do bote, em pixels por segundo.
+@export var lunge_speed := 160.0
+## Descanso depois do bote, em segundos.
+@export var rest_seconds := 0.7
+## Quanto a área do golpe avança além do corpo, na direção do bote, em pixels.
+@export var strike_reach := 8.0
+## Velocidade do empurrão ao ser arranhada, em pixels por segundo.
+@export var knockback_speed := 160.0
+## Duração do empurrão ao ser arranhada, em segundos.
+@export var knockback_seconds := 0.12
 
 var brain: CreatureBrain
+## Id da criatura no catálogo (vazio se veio sem dados).
+var creature_id := ""
 var _grid: MazeGrid
 var _target: Node2D
 var _path: Array[Vector2i] = []
@@ -42,45 +79,102 @@ var _repath_left := 0.0
 var _hits_left := 0
 var _knockback_left := 0.0
 var _knockback := Vector2.ZERO
+var _strike_direction := Vector2.DOWN
+var _lunge_connected := false
+var _strong := false
+var _sprite_name := ""
+var _walk_sheet: Texture2D
+var _strike_sheet: Texture2D
+var _walk_time := 0.0
+var _showing_strike := false
+var _base_color := Color.WHITE
 
 @onready var _sprite: Sprite2D = $Sprite
-@onready var _contact: Area2D = $ContactArea
+@onready var _strike_area: Area2D = $StrikeArea
 
 
 func _ready() -> void:
-	brain = CreatureBrain.new(detection_distance, give_up_distance)
+	brain = CreatureBrain.new(
+		detection_distance,
+		give_up_distance,
+		attack_range,
+		warning_seconds,
+		lunge_seconds,
+		rest_seconds
+	)
+	_hits_left = hits_to_defeat
+	_strike_area.position = BODY_OFFSET
+	use_sheets(CreatureSprites.load_walk(_sprite_name), CreatureSprites.load_strike(_sprite_name))
+
+
+## Põe as folhas de andar e de golpe do bicho (ver `CreatureSprites`). Se faltar
+## uma delas, a criatura segue com o sprite provisório da cena.
+func use_sheets(walk: Texture2D, strike: Texture2D) -> void:
+	if walk == null or strike == null:
+		_walk_sheet = null
+		_strike_sheet = null
+	else:
+		_walk_sheet = walk
+		_strike_sheet = strike
+		_show_walk(CreatureSprites.STAND_FRAME)
+	_refresh_strong_marking()
+
+
+## Sem a arte do bicho, a forte se distingue pelo tamanho e pela cor; com a arte,
+## o próprio bicho já é diferente.
+func _refresh_strong_marking() -> void:
+	var marked := _strong and not has_art()
+	_base_color = STRONG_TINT if marked else Color.WHITE
+	_sprite.scale = Vector2.ONE * (STRONG_SCALE if marked else 1.0)
+	_sprite.modulate = _base_color
+
+
+## Se a criatura tem a arte do bicho (e não o sprite provisório).
+func has_art() -> bool:
+	return _walk_sheet != null
+
+
+## Liga a criatura ao andar (grade para achar o caminho) e ao gato (alvo). Com
+## `data`, assume dano, arranhões e velocidade da criatura do catálogo; chame
+## antes de pôr a criatura na árvore.
+func setup(grid: MazeGrid, target: Node2D, data: CreatureCatalog.Entry = null) -> void:
+	_grid = grid
+	_target = target
+	if data != null:
+		creature_id = data.id
+		_sprite_name = data.sprite
+		damage = data.damage
+		hits_to_defeat = data.hits
+		speed = data.speed
+		_strong = data.is_strong()
 	_hits_left = hits_to_defeat
 
 
-## Liga a criatura ao andar (grade para achar o caminho) e ao gato (alvo).
-func setup(grid: MazeGrid, target: Node2D) -> void:
-	_grid = grid
-	_target = target
-
-
 func _physics_process(delta: float) -> void:
-	_hurt_touching_player()
 	if _grid == null or _target == null:
 		return
+	var before := brain.state
+	var current := brain.tick(
+		delta, global_position.distance_to(_target.global_position), _target_can_be_hit()
+	)
+	if current != before:
+		_on_state_changed(before, current)
+	if current == CreatureBrain.State.WARNING:
+		_set_telegraph(brain.warning_progress())
 	if _knockback_left > 0.0:
 		_knockback_left -= delta
 		velocity = _knockback
-		move_and_slide()
-		return
-	_repath_left -= delta
-	if _repath_left <= 0.0:
-		_repath_left = REPATH_INTERVAL
-		_think()
-	velocity = _chase_velocity()
+	else:
+		if not brain.is_attacking():
+			_repath_left -= delta
+			if _repath_left <= 0.0:
+				_repath_left = REPATH_INTERVAL
+				_think()
+		velocity = _velocity_for(brain.state)
 	move_and_slide()
-
-
-## Tira um coração do gato se ele estiver encostado (o gato ignora golpes
-## enquanto está invencível).
-func _hurt_touching_player() -> void:
-	for body in _contact.get_overlapping_bodies():
-		if body is Player:
-			(body as Player).take_hit(contact_damage)
+	_animate(delta, current)
+	if brain.can_hurt():
+		_hurt_in_strike_area()
 
 
 ## Se já foi derrotada.
@@ -93,12 +187,16 @@ func take_scratch(direction: Vector2 = Vector2.ZERO) -> void:
 	if is_defeated():
 		return
 	_hits_left -= 1
+	if brain.state == CreatureBrain.State.WARNING:
+		_clear_telegraph()
+		_strike_area.position = BODY_OFFSET
+	brain.scratched()
 	_flash()
 	if _hits_left <= 0:
 		_defeat()
 	else:
-		_knockback = direction.normalized() * KNOCKBACK_SPEED
-		_knockback_left = KNOCKBACK_SECONDS
+		_knockback = direction.normalized() * knockback_speed
+		_knockback_left = knockback_seconds
 
 
 ## Mede a distância andando até o gato, atualiza o estado e refaz o caminho.
@@ -107,8 +205,11 @@ func _think() -> void:
 	var distance := INF
 	_path.clear()
 	# A distância andando nunca é menor que a em linha reta: longe demais em
-	# linha reta já descarta a busca.
-	if global_position.distance_to(_target.global_position) <= give_up_distance + tile:
+	# linha reta já descarta a busca. Gato desmaiado não é percebido.
+	if (
+		_target_can_be_hit()
+		and global_position.distance_to(_target.global_position) <= give_up_distance + tile
+	):
 		var from := MazeGrid.position_to_cell(global_position)
 		var to := MazeGrid.position_to_cell(_target.global_position)
 		var max_steps := ceili(give_up_distance / tile) + 1
@@ -133,9 +234,114 @@ func _chase_velocity() -> Vector2:
 	return global_position.direction_to(_target.global_position) * speed
 
 
+## Velocidade em cada estado: só persegue e dá o bote; nos outros fica parada.
+func _velocity_for(state: CreatureBrain.State) -> Vector2:
+	match state:
+		CreatureBrain.State.CHASING:
+			return _chase_velocity()
+		CreatureBrain.State.LUNGE:
+			return _strike_direction * lunge_speed
+	return Vector2.ZERO
+
+
+## Se o alvo pode levar um golpe (o gato desmaiado não pode).
+func _target_can_be_hit() -> bool:
+	return not (_target is Player and (_target as Player).is_fainted())
+
+
+func _on_state_changed(before: CreatureBrain.State, current: CreatureBrain.State) -> void:
+	match current:
+		CreatureBrain.State.WARNING:
+			# A direção do bote fica travada aqui, e a área do golpe já aponta para ela.
+			_strike_direction = global_position.direction_to(_target.global_position)
+			if _strike_direction.is_zero_approx():
+				_strike_direction = Vector2.DOWN
+			_strike_area.position = BODY_OFFSET + _strike_direction * strike_reach
+		CreatureBrain.State.LUNGE:
+			_clear_telegraph()
+			_lunge_connected = false
+		CreatureBrain.State.REST, CreatureBrain.State.UNAWARE:
+			_clear_telegraph()
+			_strike_area.position = BODY_OFFSET
+		CreatureBrain.State.CHASING:
+			# Voltando do descanso, o caminho antigo não vale mais.
+			if before == CreatureBrain.State.REST:
+				_repath_left = 0.0
+
+
+## Escolhe o quadro e o lado para onde o bicho olha. As folhas olham para a
+## esquerda, então ele é espelhado quando vai para a direita. O aviso, o bote e o
+## descanso mostram os quadros do golpe; perseguindo, o andar; parado, em pé.
+func _animate(delta: float, state: CreatureBrain.State) -> void:
+	if not has_art():
+		return
+	var strike_frame := CreatureSprites.strike_frame(state)
+	if strike_frame >= 0:
+		_face(_strike_direction.x)
+		_show_strike(strike_frame)
+		return
+	if state == CreatureBrain.State.CHASING and _knockback_left <= 0.0:
+		_face(velocity.x)
+		_walk_time += delta
+		_show_walk(CreatureSprites.walk_frame(_walk_time))
+	else:
+		_walk_time = 0.0
+		_show_walk(CreatureSprites.STAND_FRAME)
+
+
+## Espelha o bicho para o lado do movimento (ignora movimento quase parado).
+func _face(direction_x: float) -> void:
+	if absf(direction_x) > 1.0:
+		_sprite.flip_h = direction_x > 0.0
+
+
+func _show_walk(frame: int) -> void:
+	if _showing_strike or _sprite.texture != _walk_sheet:
+		_sprite.texture = _walk_sheet
+		_sprite.hframes = CreatureSprites.WALK_FRAMES
+		_showing_strike = false
+	_sprite.frame = frame
+
+
+func _show_strike(frame: int) -> void:
+	if not _showing_strike or _sprite.texture != _strike_sheet:
+		_sprite.texture = _strike_sheet
+		_sprite.hframes = CreatureSprites.STRIKE_FRAMES
+		_showing_strike = true
+	_sprite.frame = frame
+
+
+## Tira vida do gato se ele estiver na área do golpe. Cada bote acerta uma vez.
+func _hurt_in_strike_area() -> void:
+	if _lunge_connected:
+		return
+	for body in _strike_area.get_overlapping_bodies():
+		if body is Player and (body as Player).take_hit(damage, global_position):
+			_lunge_connected = true
+			return
+
+
+## Aviso: pisca em vermelho e dá um pulinho, de acordo com o quanto já passou.
+func _set_telegraph(progress: float) -> void:
+	# Com "reduzir efeitos visuais" a cor do aviso fica fixa, sem pulsar.
+	var pulse := (
+		REDUCED_WARNING_MIX
+		if AudioSettings.reduce_effects
+		else 0.5 - 0.5 * cos(progress * TAU * WARNING_BLINKS)
+	)
+	_sprite.modulate = _base_color.lerp(WARNING_COLOR, pulse)
+	_sprite.position.y = -sin(progress * PI) * WARNING_HOP_HEIGHT
+
+
+func _clear_telegraph() -> void:
+	_sprite.modulate = _base_color
+	_sprite.position = Vector2.ZERO
+
+
 func _flash() -> void:
-	_sprite.modulate = Color(3.0, 3.0, 3.0)
-	create_tween().tween_property(_sprite, "modulate", Color.WHITE, 0.15)
+	var brightness := REDUCED_FLASH if AudioSettings.reduce_effects else 3.0
+	_sprite.modulate = Color(brightness, brightness, brightness)
+	create_tween().tween_property(_sprite, "modulate", _base_color, 0.15)
 
 
 func _defeat() -> void:

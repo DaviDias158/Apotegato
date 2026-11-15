@@ -17,6 +17,10 @@ func _tiles() -> TileMapLayer:
 	return _room.get_node("Tiles")
 
 
+func _ground() -> TileMapLayer:
+	return _room.get_node("Ground")
+
+
 func test_default_params_come_from_maze_params() -> void:
 	assert_not_null(_room.params)
 	assert_eq(_room.params.width, 30)
@@ -43,6 +47,16 @@ func test_tiles_match_the_grid() -> void:
 			var cell := Vector2i(x, y)
 			if grid.is_blocked(cell) and not grid.is_border(cell):
 				assert_eq(_tiles().get_cell_atlas_coords(cell), RegionTileSet.BARRIER_TILE)
+
+
+func test_ground_layer_has_floor_under_every_cell() -> void:
+	var layout := _room.generate(Regions.AMAZONIA, 1)
+	assert_eq(_ground().get_used_rect(), Rect2i(0, 0, 30, 17))
+	for y in layout.grid.height:
+		for x in layout.grid.width:
+			var cell := Vector2i(x, y)
+			assert_eq(_ground().get_cell_atlas_coords(cell), RegionTileSet.FLOOR_TILE)
+	assert_eq(_ground().get_cell_atlas_coords(layout.exit_cell), RegionTileSet.FLOOR_TILE)
 
 
 func test_each_region_uses_its_own_tileset() -> void:
@@ -86,3 +100,12 @@ func test_walls_stop_a_body() -> void:
 		body.velocity = Vector2.LEFT * 200.0
 		body.move_and_slide()
 	assert_gt(body.position.x, 32.0 - 1.0, "Não atravessa a borda do andar")
+
+
+func test_water_region_draws_walls_and_barriers_from_the_water_source() -> void:
+	var layout := _room.generate(Regions.CAMPOS_RIOS, 1)
+	var tiles := _tiles()
+	assert_eq(tiles.get_cell_source_id(Vector2i(0, 0)), RegionTileSet.WATER_SOURCE_ID)
+	assert_eq(tiles.get_cell_atlas_coords(Vector2i(0, 0)), RegionTileSet.WALL_TILE)
+	assert_eq(tiles.get_cell_source_id(layout.entry_cell), RegionTileSet.SOURCE_ID)
+	assert_eq(tiles.get_cell_source_id(layout.exit_cell), RegionTileSet.SOURCE_ID)

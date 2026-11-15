@@ -7,8 +7,15 @@ com quatro tiles lado a lado:
 
     0  chão
     1  parede da borda do andar
-    2  barreira dentro do andar
-    3  porta de saída
+    2  barreira dentro do andar (fundo transparente)
+    3  porta de saída (fundo transparente)
+
+O chão (tile 0) é desenhado por baixo de todos os tiles, então barreira e porta
+precisam de fundo transparente.
+
+Campos e Rios e Litoral também ganham um `water.png` (128 x 128: quatro quadros
+da água animada, em coluna, na coluna do tile de parede e/ou de barreira). Os
+tiles que têm água nesse arquivo substituem os estáticos do tileset.
 
 Cada região usa três cores (chão, parede e destaque). É só um quebra-galho até a
 arte definitiva: para trocar, basta sobrescrever os PNGs com as mesmas dimensões
@@ -80,8 +87,12 @@ def wall_tile(wall, accent, seed):
 
 
 def barrier_tile(floor, wall, accent, seed):
-    """Moita ou rocha em cima do chão, para as barreiras internas."""
-    tile = floor_tile(floor, accent, seed)
+    """Moita ou rocha com fundo transparente, para as barreiras internas.
+
+    O chão normal é desenhado por baixo pelo `Room`, então a grama fica igual
+    ao redor do obstáculo.
+    """
+    tile = Image.new("RGBA", (TILE, TILE), (0, 0, 0, 0))
     d = ImageDraw.Draw(tile)
     d.ellipse([3, 6, 28, 29], fill=shade(wall, 10), outline=OUTLINE)
     d.ellipse([7, 9, 19, 17], fill=shade(wall, 34))
@@ -92,8 +103,8 @@ def barrier_tile(floor, wall, accent, seed):
 
 
 def door_tile(floor, wall, accent, seed):
-    """Arco de passagem com o destaque da região."""
-    tile = floor_tile(floor, accent, seed)
+    """Arco de passagem com fundo transparente e o destaque da região."""
+    tile = Image.new("RGBA", (TILE, TILE), (0, 0, 0, 0))
     d = ImageDraw.Draw(tile)
     d.rectangle([4, 2, 27, 29], fill=shade(wall, -20), outline=OUTLINE)
     d.rectangle([8, 7, 23, 29], fill=shade(accent, -40), outline=OUTLINE)
@@ -120,9 +131,50 @@ def make_tileset(region, palette):
     img.save(folder / "tileset.png")
 
 
+# Água animada: região -> (cor da água rasa, cor da água funda, tiles que são água).
+# Os tiles contam como na folha do tileset (1 = parede, 2 = barreira).
+WATER = {
+    "campos_rios": ((0x3F, 0x8F, 0xCF), (0x2A, 0x6A, 0xA8), (1, 2)),
+    "litoral": ((0x4F, 0xA3, 0xD8), (0x2F, 0x78, 0xB5), (1,)),
+}
+WATER_FRAMES = 4
+
+
+def water_frame(base, foam, frame):
+    """Um quadro de água: cor lisa com riscos claros que correm para a direita.
+
+    Os riscos se repetem a cada 16 px e andam 8 px por quadro, então a animação
+    fecha em 4 quadros e emenda com os tiles vizinhos.
+    """
+    tile = Image.new("RGBA", (TILE, TILE), base + (255,))
+    d = ImageDraw.Draw(tile)
+    for row, y in enumerate((5, 15, 25)):
+        shift = frame * 8 + row * 5
+        for x0 in range(-16, TILE + 16, 16):
+            x = x0 + shift % 16
+            d.line([(x, y), (x + 6, y)], fill=foam + (255,))
+    return tile
+
+
+def make_water(region, shallow, deep, tiles):
+    """water.png: 128 x (32 * quadros), com os quadros de cada tile em coluna.
+
+    As colunas dos tiles que não são água ficam transparentes.
+    """
+    img = Image.new("RGBA", (TILE * 4, TILE * WATER_FRAMES), (0, 0, 0, 0))
+    for column in tiles:
+        base = deep if column == 1 else shallow
+        foam = shade(base, 70)[:3]
+        for frame in range(WATER_FRAMES):
+            img.paste(water_frame(base, foam, frame), (column * TILE, frame * TILE))
+    img.save(OUT / region / "water.png")
+
+
 def main():
     for region, palette in PALETTES.items():
         make_tileset(region, palette)
+    for region, (shallow, deep, tiles) in WATER.items():
+        make_water(region, shallow, deep, tiles)
 
 
 if __name__ == "__main__":

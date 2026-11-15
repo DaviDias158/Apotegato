@@ -51,7 +51,7 @@ assets/
     music/
     sfx/
   fonts/
-data/              CSVs do jogo (ingredientes, créditos)
+data/              dados do jogo (CSVs, diário e falas em JSON)
 scenes/
   cabin/           a cabana (cabin.tscn)
   player/          o Mingau
@@ -135,6 +135,29 @@ O arquivo tem um `.import` com `importer="keep"`. Sem isso o Godot importaria o 
 
 `tests/test_ingredients_csv.gd` confere o CSV contra o GDD: total de ingredientes, ids únicos, regiões e paridades válidas e quantidade de ingredientes por condição. Se o time mudar alguma dessas regras, atualize as constantes do teste junto.
 
+## O arquivo de atendimentos
+
+`data/atendimentos.json` guarda as falas de atendimento das 10 condições, tiradas do `Roteiro_Mingau.txt`, sem texto no código. Quem escreve ou revisa uma fala edita só esse arquivo e confere com o roteiro. Cada condição (id igual ao do CSV) tem quatro partes, cada uma uma lista de falas `{"speaker": ..., "text": ...}`, com `speaker` `patient`, `apothecary` ou `mingau`:
+
+| Parte | Quando |
+| --- | --- |
+| `complaint` | O paciente descreve o que sente, na primeira conversa |
+| `request` | A apotecária pede os ingredientes |
+| `guidance` | A apotecária explica o papel de cada ingrediente e recomenda procurar atendimento de saúde, após a entrega completa |
+| `thanks` | O paciente agradece |
+
+`tests/test_treatments_data.gd` confere a estrutura: as 10 condições com as quatro partes e o falante certo em cada uma, o pedido citando os ingredientes exigidos e a recomendação de procurar atendimento de saúde. Ele não compara o texto com o roteiro; isso é conferência de quem revisa. As conversas gerais (introdução, entrega parcial, encerramento) ficam em `data/dialogos.json`, do sistema de diálogo.
+
+## Diálogos e estados do jogo
+
+`data/dialogos.json` guarda as conversas gerais do roteiro, por id em `conversations`: `intro`, `patient_reminder`, `delivery_partial` (o texto tem `{missing}`, trocado pelos ingredientes que faltam), `delivery_extras`, `delivery_empty`, `ending` (a última fala tem `choices`, com `go_home` e `keep_helping`), `ending_go_home` e `ending_keep_helping`. As falas têm o mesmo formato do `data/atendimentos.json`. O autoload `DialogueData` lê os dois arquivos e o `data/elenco.csv` (nome do paciente na caixa) uma vez; nenhum outro script abre esses arquivos. `tests/test_dialogue_data.gd` confere a estrutura.
+
+A caixa de diálogo é `scenes/ui/dialogue_box.tscn`: nome de quem fala, texto aparecendo letra por letra, E ou clique para avançar, páginas para falas longas e botões para as escolhas. Em que ponto do roteiro o atendimento está (introdução, paciente atual, queixa, pedido, saída) fica em `GameState.attendance` (`scripts/attendance.gd`), e a cabana só mostra.
+
+O jogo tem uma máquina de estados, `GameState.flow` (`scripts/game_flow.gd`): exploração, diálogo, entrega, menu e conclusão, com as transições permitidas em `GameFlow.TRANSITIONS`. Só a exploração deixa o gato andar, atacar e interagir; em qualquer outro estado o `GameState` pausa a árvore de cenas, e só a interface (`process_mode` Always) responde. **Nenhuma cena pausa o jogo direto**: um menu novo pede `GameState.flow.open_menu()` ao abrir e `close_menu()` ao fechar.
+
+As opções do jogador ficam em `user://settings.cfg`, uma seção por autoload: `[display]` no `DisplaySettings`, `[audio]` e `[accessibility]` no `AudioSettings` (volumes dos barramentos `Music` e `SFX`, mudo, `reduce_effects` e `large_text`) e `[input]` no `InputSettings` (teclas trocáveis, com duas por ação). O `TextSize` aplica o "Texto grande" ao tema e aos `theme_override_font_sizes` dos nós; **ação nova que o jogador possa trocar entra em `InputSettings.REMAPPABLE`** (e o `InputSettings` é o único script que pode ler eventos de tecla, exceção registrada em `tests/test_input_map.gd`). Sem janela (modo headless) as teclas salvas não mexem no Input Map. Cada autoload grava só as suas seções e preserva as outras. **Todo efeito que pisca ou treme respeita `AudioSettings.reduce_effects`** (ver a piscada em `player.gd` e o aviso em `creature.gd`); o tremor de câmera, quando existir, também. Efeitos sonoros novos tocam no barramento `SFX`. A tela de opções é `scenes/ui/options_menu.tscn` e o menu de pausa, `scenes/ui/pause_menu.tscn` (uma instância em cada cena de jogo, abre com a ação `pause`).
+
 ## Versões e entregas
 
 Cada sprint termina com uma tag de versão. Quando a `main` estiver pronta para a entrega:
@@ -157,7 +180,7 @@ Prefira licença CC0 ou CC BY. Para cada asset, registre nome, autor, origem, fi
 
 Vários pacotes de arte proíbem redistribuir os arquivos originais, e este repositório é público. Por isso a arte de terceiros **não vai no git**: ela fica no repositório privado [`ApotegatoAssets`](https://github.com/gsaraiva2109/ApotegatoAssets) e é baixada para `assets/art/third_party/`, pasta que o `.gitignore` ignora. A arte provisória feita por nós continua em `assets/art/` e o projeto abre sem erro mesmo sem a de terceiros.
 
-Os derivados de arte de terceiros (como a onça, recolor do tigre do MasuOne) também ficam só no repositório privado. Packs CC0 ou CC BY sem cláusula de redistribuição podem ir no repositório público, com crédito na tela Créditos.
+Os derivados de arte de terceiros (como os bichos das criaturas, no estilo da capivara do Rainloaf) também ficam só no repositório privado. Packs CC0 ou CC BY sem cláusula de redistribuição podem ir no repositório público, com crédito na tela Créditos.
 
 ### Atalho: `tools/setup.sh`
 
@@ -174,6 +197,8 @@ Os derivados de arte de terceiros (como a onça, recolor do tigre do MasuOne) ta
    ```
 4. Abra o projeto no Godot, que importa os arquivos novos. Repita o comando quando a arte mudar no repositório privado.
 
+Como a arte provisória (cabana, regiões, interface e Mingau) e a de terceiros ficam no `.gitignore`, **trocar de branch com `git checkout` nunca conflita com elas**. O `fetch_assets.sh` primeiro gera a arte provisória (`tools/gerar_provisorios.sh`, precisa de Python 3 com Pillow) e depois aplica a do pacote. Ele só baixa o `ApotegatoAssets` quando o repositório mudou desde a última vez (guarda o commit em `assets/art/third_party/.commit`); sem rede, reaproveita a cópia local. Use `--forcar` para baixar de novo. O `lefthook` roda o script depois de cada `pull`/`merge` e de cada troca de branch. A arte provisória nova entra pelos scripts `tools/make_*_art.py` (o Mingau provisório fica em `tools/provisorio/`), nunca como PNG commitado.
+
 No Windows, rode pelo Git Bash.
 
 ### Como adicionar ou trocar arte de terceiros
@@ -184,13 +209,15 @@ No Windows, rode pelo Git Bash.
 
 ### Arte substituta da cabana
 
-O `ApotegatoAssets` tem uma pasta `overrides/art/` com recortes do Epic RPG World - House Interiors, com os mesmos nomes e tamanhos da arte provisória de `assets/art/cabin/`. O `tools/fetch_assets.sh` copia esses arquivos por cima da provisória, e a cabana passa a usar a arte definitiva sem mudar nenhuma cena. Como a arte de terceiros não pode ir para o git público, o script marca esses arquivos com `git update-index --skip-worktree`: eles não aparecem em `git status` e não entram em commits. Se você precisar restaurar a arte provisória (por exemplo, antes de um `git pull` que mexe nesses arquivos), rode `git update-index --no-skip-worktree assets/art/cabin/*.png` e depois `git checkout -- assets/art/cabin`. A porta continua provisória.
+O `ApotegatoAssets` tem uma pasta `overrides/art/` com recortes do Epic RPG World - House Interiors, com os mesmos nomes e tamanhos da arte provisória de `assets/art/cabin/`. O `tools/fetch_assets.sh` copia esses arquivos por cima da provisória, e a cabana passa a usar a arte definitiva sem mudar nenhuma cena. Como a arte de terceiros não pode ir para o git público, esses PNGs não são versionados (estão no `.gitignore`): `tools/gerar_provisorios.sh` gera a arte provisória na sua máquina e o `fetch_assets.sh` aplica a do pacote por cima. A porta continua provisória.
 
-O mesmo mecanismo vale para os tilesets das regiões (`overrides/art/regions/<id>/tileset.png`, 128 x 32, montados com Forest Tilesets, RPG Beach Tileset e Pixel Trees 32x32) e para o sprite do Mingau (`overrides/art/characters/mingau_placeholder.png`, o gato do pacote da MasuOne). O tile de saída de cada região continua o provisório, na cor da Tabela 3. Quem rodar o jogo sem acesso ao repositório privado vê a arte provisória.
+O mesmo mecanismo vale para os tilesets das regiões (`overrides/art/regions/<id>/tileset.png`, 128 x 32, montados com Forest Tilesets, RPG Beach Tileset e Pixel Trees 32x32) e para o Mingau: `overrides/art/characters/mingau_sheet.png` (352 x 320, células de 44 x 40, uma linha por direção na ordem sul, sudeste, leste, nordeste, norte, noroeste, oeste, sudoeste, e oito colunas: parado, 4 de andar, aviso, golpe e volta do arranhão; já vem para a direita, sem espelhar). A folha é derivada do gato da MasuOne (gerador em `derivados/mingau/` do ApotegatoAssets). Sem ela, o gato usa `mingau_placeholder.png`, o quadro original do pacote. As criaturas seguem o mesmo mecanismo: `overrides/art/creatures/<sprite>/andar.png` (5 células de 44 x 32) e `golpe.png` (3 células: aviso, golpe e volta), todas viradas para a esquerda, onde `<sprite>` é a coluna `sprite` do `data/criaturas.csv` (`toucan`, `jaguar`, `capybara`...). O jogo monta o caminho em tempo de execução e só carrega se o arquivo existir, então sem a arte a criatura usa o sprite provisório, sem aviso no console. O tile de saída de cada região continua o provisório, na cor da Tabela 3. Quem rodar o jogo sem acesso ao repositório privado vê a arte provisória.
+
+O `Room` desenha o tile de chão (tile 0) por baixo de todas as células, para a grama ser igual em todo o andar. Por isso, **nos tilesets de região (de terceiros ou provisórios), a barreira (tile 2) e a saída (tile 3) precisam ter fundo transparente**; só o chão e a parede da borda ficam opacos (a água de Campos e Rios e do Litoral também, porque é trocada pelo `water.png`). Se uma peça nova trouxer o chão pintado atrás, o quadrado aparece com uma grama diferente: recorte o fundo com `tools/cut_tile_background.py` (use `--tile 3` para a saída) e confira com `--preview`. No `ApotegatoAssets`, o `tools/gerar_regioes.py` recusa um `exit.png` opaco.
 
 ### Interface (UI Medieval Mega)
 
-O pacote da ToffeeCraft é uma spritesheet única (`toffeecraft-ui-medieval-mega/MedievalUiMega/medieval.png` no `ApotegatoAssets`) e a licença proíbe redistribuir. O `tools/fetch_assets.sh` roda o `tools/crop_ui_pack.py` no fim, que recorta as peças do tema (painel, botões, tábua de madeira das placas, barra, mochila, cursor do mouse e corações do HUD) por coordenadas e as grava em `assets/art/ui/`, por cima da arte provisória de mesmo nome e tamanho (gerada por `tools/make_ui_art.py` e `tools/make_heart_art.py`). Os arquivos ficam com `skip-worktree`, como os da cabana, então o recorte nunca entra em commit. Para trocar uma peça, edite o dicionário `CROPS` do script. O tema `scenes/ui/game_theme.tres` usa 9-slice com margens que valem para a arte provisória e para a definitiva.
+O pacote da ToffeeCraft é uma spritesheet única (`toffeecraft-ui-medieval-mega/MedievalUiMega/medieval.png` no `ApotegatoAssets`) e a licença proíbe redistribuir. O `tools/fetch_assets.sh` roda o `tools/crop_ui_pack.py` no fim, que recorta as peças do tema (painel, botões, tábua de madeira das placas, barra, mochila, cursor do mouse e corações do HUD) por coordenadas e as grava em `assets/art/ui/`, por cima da arte provisória de mesmo nome e tamanho (gerada por `tools/make_ui_art.py` e `tools/make_heart_art.py`). Esses arquivos também estão no `.gitignore`, então o recorte nunca entra em commit. Os interruptores e os ícones da tela de opções (fechar, engrenagem, som, mudo, casa e play) **não têm arte provisória**: só existem depois de o `crop_ui_pack.py` rodar com o pacote baixado (a tela de opções e o menu de pausa não abrem sem eles). Para trocar uma peça, edite o dicionário `CROPS` do script (ou `ICON_GLYPHS` e as caixas do interruptor, nas peças sem provisória). O tema `scenes/ui/game_theme.tres` usa 9-slice com margens que valem para a arte provisória e para a definitiva.
 
 ### Músicas
 

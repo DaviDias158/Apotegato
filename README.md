@@ -25,17 +25,29 @@ Pelo caminho tem criaturas. O combate é sem armas e sem sangue, e é opcional: 
 | Interagir | E | `interact` |
 | Abrir a mochila | I | `backpack` |
 | Abrir o diário | J | `journal` |
-| Pausar | Esc | `pause` |
+| Pausar (menu com Continuar, Opções e Voltar ao menu inicial) | Esc | `pause` |
+| Tela cheia | F11 | `toggle_fullscreen` |
+| Pixel perfeito ou preencher a tela | F10 | `toggle_scale_mode` |
 | Menus | Mouse | |
 
-As teclas são físicas: WASD fica no mesmo lugar em qualquer layout de teclado. O código usa sempre o nome da ação (`Input.is_action_pressed("attack")`), nunca a tecla. Para mudar uma tecla, edite em Projeto > Configurações do Projeto > Mapa de Entrada e atualize `tests/test_input_map.gd`.
+As teclas são físicas: WASD fica no mesmo lugar em qualquer layout de teclado. O jogador pode trocar as teclas em Opções > Teclas. O código usa sempre o nome da ação (`Input.is_action_pressed("attack")`), nunca a tecla. Para mudar uma tecla, edite em Projeto > Configurações do Projeto > Mapa de Entrada e atualize `tests/test_input_map.gd`.
+
+### Opções
+
+A tela de opções abre pelo menu inicial e pelo menu de pausa. Tem volume da música e dos efeitos (0 a 100%, de 5 em 5), um interruptor de mudo para cada um, tela cheia, pixel perfeito ou preencher, a troca das teclas (andar, arranhar, interagir, mochila e diário, cada uma com tecla principal e alternativa; Esc, F10 e F11 são fixas e uma tecla só serve a uma ação), "Reduzir efeitos visuais", que troca as piscadas (a do Mingau ao levar dano e o aviso das criaturas) por versões estáticas, e "Texto grande", que aumenta os textos em 25%. Funciona com mouse e teclado, e tudo fica salvo em `user://settings.cfg`. "Restaurar padrões" volta tudo ao original.
+
+### Tamanho da janela
+
+O jogo é desenhado em 960 x 544 e ampliado para o monitor de quem joga, em qualquer resolução. Ao abrir, a janela ganha o maior tamanho que cabe na tela. No modo **pixel perfeito** (padrão) a ampliação é sempre inteira (2x, 3x...), sem deformar os pixels, e pode sobrar borda preta; no modo **preencher a tela** (F10) a imagem ocupa o máximo possível, com uma leve irregularidade nos pixels. Em telas menores que 960 x 544 a imagem é reduzida até caber. A tela cheia (F11) e o modo ficam salvos em `user://settings.cfg`.
 
 ## Números que já estão fechados
 
-- 7 corações. Se zerar, o gato desmaia e acorda na cabana com a mochila intacta.
-- 3 golpes derrotam uma criatura.
+- 7 corações, contados em meios (14 meios). Se zerar, o gato desmaia e acorda na cabana com a mochila intacta e a vida cheia. Criaturas não atacam um gato desmaiado.
+- Cada região tem uma criatura fraca (tira meio coração, 3 arranhões, 70 px/s, desde o andar 1) e uma forte (tira um coração, 4 arranhões, 80 px/s, a partir do andar 3). Os valores e o bicho de cada criatura (coluna `sprite`) ficam em `data/criaturas.csv`: tucano e onça-pintada na Amazônia, cascavel e onça-parda na Caatinga, seriema e capivara nos Campos e Rios, lobo-guará e tamanduá no Cerrado, caranguejo e jacaré no Litoral, macaco-prego e mico-leão na Mata Atlântica.
+- A criatura só machuca no bote: com o gato a 24 px ela para e avisa por 0,4 s, dá o bote por 0,12 s e descansa 0,7 s. Arranhar durante o aviso cancela o bote. Encostar nela não machuca. Quem leva o golpe fica 1 s invencível e é empurrado.
+- Cura: meio coração a cada 5 s sem levar dano nem arranhar. Cada sobra de ingrediente cura 1 coração (ou meio, se falta só isso); com a vida cheia nada é gasto.
 - Luz: começa em 0,6, ganha 0,12 por criatura derrotada, teto de 1,8, e volta a 0,6 a cada andar novo.
-- Mochila com 6 espaços e itens empilháveis. O que sobra da entrega vai para o estoque da apotecária ou cura 1 coração por item.
+- Mochila com 6 espaços e itens empilháveis. O que sobra da entrega vai para o estoque da apotecária ou cura vida (1 coração por item).
 - 26 ingredientes e 10 condições, todos num CSV único com id estável.
 - Save em JSON local, com campo de versão, gravado ao voltar para a cabana.
 
