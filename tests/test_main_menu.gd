@@ -1,5 +1,5 @@
 extends GutTest
-## Confere o menu inicial: é a cena principal do projeto, tem as cinco opções,
+## Confere o menu inicial: é a cena principal do projeto, tem as seis opções,
 ## Carregar Jogo só vale com save, e dá para navegar com o mouse.
 
 const MenuScene := preload("res://scenes/ui/main_menu.tscn")
@@ -36,10 +36,11 @@ func test_menu_is_the_main_scene() -> void:
 	assert_true(ResourceLoader.exists(ScenePaths.MENU))
 
 
-func test_has_the_five_options() -> void:
+func test_has_the_six_options() -> void:
 	assert_eq(_button("NewGameButton").text, "Novo Jogo")
 	assert_eq(_button("LoadButton").text, "Carregar Jogo")
 	assert_eq(_button("OptionsButton").text, "Opções")
+	assert_eq(_button("SourcesButton").text, "Fontes")
 	assert_eq(_button("CreditsButton").text, "Créditos")
 	assert_eq(_button("QuitButton").text, "Sair")
 
@@ -96,7 +97,12 @@ func test_load_restores_the_campaign_in_the_cabin() -> void:
 
 func test_buttons_work_with_the_mouse() -> void:
 	for button_name in [
-		"NewGameButton", "LoadButton", "OptionsButton", "CreditsButton", "QuitButton"
+		"NewGameButton",
+		"LoadButton",
+		"OptionsButton",
+		"SourcesButton",
+		"CreditsButton",
+		"QuitButton"
 	]:
 		var button := _button(button_name)
 		assert_eq(button.mouse_filter, Control.MOUSE_FILTER_STOP)
@@ -124,6 +130,20 @@ func test_credits_opens_and_closes() -> void:
 	assert_true(_menu.is_credits_open())
 	_menu.get_node("CreditsPanel/Center/Panel/Layout/BackButton").pressed.emit()
 	assert_false(_menu.is_credits_open())
+
+
+func test_sources_opens_and_closes() -> void:
+	assert_false(_menu.is_sources_open())
+	_button("SourcesButton").pressed.emit()
+	assert_true(_menu.is_sources_open())
+	_menu.get_node("SourcesMenu").close()
+	assert_false(_menu.is_sources_open())
+
+
+func test_closing_the_sources_returns_focus_to_its_button() -> void:
+	_button("SourcesButton").pressed.emit()
+	_menu.get_node("SourcesMenu").close()
+	assert_true(_button("SourcesButton").has_focus())
 
 
 func test_escape_closes_the_credits() -> void:
