@@ -1,5 +1,5 @@
 extends GutTest
-## Confere o menu inicial: é a cena principal do projeto, tem as cinco opções,
+## Confere o menu inicial: é a cena principal do projeto, tem as seis opções,
 ## Carregar Jogo só vale com save, e dá para navegar com o mouse.
 
 const MenuScene := preload("res://scenes/ui/main_menu.tscn")
@@ -36,10 +36,11 @@ func test_menu_is_the_main_scene() -> void:
 	assert_true(ResourceLoader.exists(ScenePaths.MENU))
 
 
-func test_has_the_five_options() -> void:
+func test_has_the_six_options() -> void:
 	assert_eq(_button("NewGameButton").text, "Novo Jogo")
 	assert_eq(_button("LoadButton").text, "Carregar Jogo")
 	assert_eq(_button("OptionsButton").text, "Opções")
+	assert_eq(_button("SourcesButton").text, "Fontes")
 	assert_eq(_button("CreditsButton").text, "Créditos")
 	assert_eq(_button("QuitButton").text, "Sair")
 
@@ -51,17 +52,57 @@ func test_load_is_disabled_without_a_save() -> void:
 
 
 func test_load_is_enabled_with_a_save() -> void:
-	var file := FileAccess.open(TEST_SAVE, FileAccess.WRITE)
-	file.store_string("{}")
-	file.close()
+	assert_eq(SaveGame.write(TEST_SAVE, Hearts.MAX), OK)
 	_menu = _make_menu()
 	assert_true(MainMenu.has_save(TEST_SAVE))
 	assert_false(_button("LoadButton").disabled)
 
 
+func test_load_is_disabled_with_an_invalid_save() -> void:
+	var file := FileAccess.open(TEST_SAVE, FileAccess.WRITE)
+	file.store_string("{}")
+	file.close()
+	_menu = _make_menu()
+	assert_false(MainMenu.has_save(TEST_SAVE))
+	assert_true(_button("LoadButton").disabled)
+
+
+func test_load_restores_the_campaign_in_the_cabin() -> void:
+	var conditions := IngredientData.get_conditions()
+	GameState.patients.mark_attended(conditions[0])
+	GameState.attendance.finish_intro()
+	GameState.attendance.arrive(conditions[1])
+	GameState.attendance.talk_to_patient()
+	GameState.attendance.talk_to_apothecary()
+	GameState.backpack.add("mel", 2)
+	GameState.stock.store("sardinha", 3)
+	assert_eq(SaveGame.write(TEST_SAVE, Hearts.MAX - 3), OK)
+	GameState.new_game()
+	_menu = _make_menu()
+	_button("LoadButton").pressed.emit()
+	await wait_process_frames(2)
+	var cabin := get_tree().current_scene as Cabin
+	assert_not_null(cabin)
+	if cabin == null:
+		return
+	var player: Player = cabin.get_node("World/Player")
+	assert_eq(player.hearts.current, Hearts.MAX - 3)
+	assert_eq(GameState.backpack.count("mel"), 2)
+	assert_eq(GameState.stock.count("sardinha"), 3)
+	assert_true(GameState.patients.is_attended(conditions[0]))
+	assert_eq(cabin.current_condition, conditions[1])
+	assert_false(cabin.is_in_dialogue())
+	cabin.queue_free()
+
+
 func test_buttons_work_with_the_mouse() -> void:
 	for button_name in [
-		"NewGameButton", "LoadButton", "OptionsButton", "CreditsButton", "QuitButton"
+		"NewGameButton",
+		"LoadButton",
+		"OptionsButton",
+		"SourcesButton",
+		"CreditsButton",
+		"QuitButton"
 	]:
 		var button := _button(button_name)
 		assert_eq(button.mouse_filter, Control.MOUSE_FILTER_STOP)
@@ -89,6 +130,20 @@ func test_credits_opens_and_closes() -> void:
 	assert_true(_menu.is_credits_open())
 	_menu.get_node("CreditsPanel/Center/Panel/Layout/BackButton").pressed.emit()
 	assert_false(_menu.is_credits_open())
+
+
+func test_sources_opens_and_closes() -> void:
+	assert_false(_menu.is_sources_open())
+	_button("SourcesButton").pressed.emit()
+	assert_true(_menu.is_sources_open())
+	_menu.get_node("SourcesMenu").close()
+	assert_false(_menu.is_sources_open())
+
+
+func test_closing_the_sources_returns_focus_to_its_button() -> void:
+	_button("SourcesButton").pressed.emit()
+	_menu.get_node("SourcesMenu").close()
+	assert_true(_button("SourcesButton").has_focus())
 
 
 func test_escape_closes_the_credits() -> void:
